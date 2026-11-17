@@ -1,0 +1,9 @@
+data/
+data_refresh/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.sqlite
+*.db
+.env

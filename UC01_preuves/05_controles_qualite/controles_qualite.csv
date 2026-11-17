@@ -1,0 +1,12 @@
+﻿Source;Table;Rows;Expected_Columns;Invalid_Structure_Rows;Rows_With_Missing;Empty_Fields;Negative_Fields;Sample_Rows_Checked;Sample_Exact_Duplicate_Rows
+data;store_sales;667579;23;0;1139;1139;495971;10000;0
+data;web_sales;668052;34;0;2197;3021;407163;10000;0
+data;item;17820;22;0;17820;17838;0;10000;0
+data;inventory;23255100;4;0;5999;5999;0;10000;0
+data;customer;99000;18;0;332;333;0;10000;0
+data;date_dim;109573;28;0;0;0;0;10000;0
+data_refresh;store_sales;6632;23;0;40;40;4918;6632;0
+data_refresh;web_sales;6879;34;0;33;56;4175;6879;0
+data_refresh;item;180;22;0;180;180;0;180;0
+data_refresh;inventory;234900;4;0;63;63;0;10000;0
+data_refresh;customer;1000;18;0;0;0;0;1000;0
