@@ -1,0 +1,906 @@
+
+============================================================
+CELLULE 2
+============================================================
+
+CODE :
+import sys
+import pyspark
+
+print("Python :", sys.version.split()[0])
+print("PySpark :", pyspark.__version__)
+print("Spark :", spark.version)
+print("Mode d'exécution :", spark.sparkContext.master)
+print("HDFS :", spark.sparkContext._jsc.hadoopConfiguration().get("fs.defaultFS"))
+
+RESULTATS :
+Python : 3.12.3
+PySpark : 4.3.0
+Spark : 4.3.0
+Mode d'exécution : local[1]
+HDFS : hdfs://localhost:9000
+
+============================================================
+CELLULE 3
+============================================================
+
+CODE :
+import os
+from pyspark.sql import SparkSession
+
+os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
+
+spark = (
+    SparkSession.builder
+    .appName("UC06-Retail-Intelligence")
+    .master("local[1]")
+    .config("spark.driver.memory", "768m")
+    .config("spark.sql.shuffle.partitions", "2")
+    .config("spark.default.parallelism", "1")
+    .config("spark.ui.enabled", "false")
+    .config("spark.driver.port", "40450")
+    .getOrCreate()
+)
+
+spark.sparkContext.setLogLevel("ERROR")
+
+print("Spark démarré :", spark.version)
+print("Mode :", spark.sparkContext.master)
+
+RESULTATS :
+WARNING: Using incubator modules: jdk.incubator.vector
+Using Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/11/19 11:10:15 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Spark démarré : 4.3.0
+Mode : local[1]
+
+============================================================
+CELLULE 5
+============================================================
+
+CODE :
+chemin_sales = (
+    "hdfs://localhost:9000/"
+    "retail-lake/raw/tpcxbb/initial/store_sales/store_sales.dat"
+)
+
+sales_raw = spark.read.text(chemin_sales)
+
+sales_raw.show(3, truncate=80)
+
+RESULTATS :
+[Stage 0:>                                                          (0 + 1) / 1]+--------------------------------------------------------------------------------+
+|                                                                           value|
++--------------------------------------------------------------------------------+
+|36890|71480|10001|44404|493944|2898|44093|10|294|0|31|18.00|30.78|23.08|238.7...|
+|36890|71480|10000|44404|493944|2898|44093|10|279|0|54|99.21|148.82|83.34|3535...|
+|36890|71480|15556|44404|493944|2898|44093|10|114|0|39|79.49|94.59|83.24|442.6...|
++--------------------------------------------------------------------------------+
+only showing top 3 rows
+                                                                                
+============================================================
+CELLULE 6
+============================================================
+
+CODE :
+from pyspark.sql.functions import split, col
+
+sales_columns = [
+    "ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk",
+    "ss_customer_sk", "ss_cdemo_sk", "ss_hdemo_sk",
+    "ss_addr_sk", "ss_store_sk", "ss_promo_sk",
+    "ss_ticket_number", "ss_quantity", "ss_wholesale_cost",
+    "ss_list_price", "ss_sales_price", "ss_ext_discount_amt",
+    "ss_ext_sales_price", "ss_ext_wholesale_cost",
+    "ss_ext_list_price", "ss_ext_tax", "ss_coupon_amt",
+    "ss_net_paid", "ss_net_paid_inc_tax", "ss_net_profit"
+]
+
+sales_df = sales_raw.select(
+    *[
+        split(col("value"), r"\|").getItem(i).alias(nom)
+        for i, nom in enumerate(sales_columns)
+    ]
+)
+
+sales_df.select(
+    "ss_item_sk",
+    "ss_customer_sk",
+    "ss_quantity",
+    "ss_sales_price",
+    "ss_net_paid"
+).show(5)
+sales_df.printSchema()
+
+RESULTATS :
++----------+--------------+-----------+--------------+-----------+
+|ss_item_sk|ss_customer_sk|ss_quantity|ss_sales_price|ss_net_paid|
++----------+--------------+-----------+--------------+-----------+
+|     10001|         44404|         31|         23.08|     715.48|
+|     10000|         44404|         54|         83.34|    4500.36|
+|     15556|         44404|         39|         83.24|    2629.55|
+|      4597|         89832|         20|        133.40|    2668.00|
+|      3258|         89832|         76|         11.85|     900.60|
++----------+--------------+-----------+--------------+-----------+
+only showing top 5 rows
+root
+ |-- ss_sold_date_sk: string (nullable = true)
+ |-- ss_sold_time_sk: string (nullable = true)
+ |-- ss_item_sk: string (nullable = true)
+ |-- ss_customer_sk: string (nullable = true)
+ |-- ss_cdemo_sk: string (nullable = true)
+ |-- ss_hdemo_sk: string (nullable = true)
+ |-- ss_addr_sk: string (nullable = true)
+ |-- ss_store_sk: string (nullable = true)
+ |-- ss_promo_sk: string (nullable = true)
+ |-- ss_ticket_number: string (nullable = true)
+ |-- ss_quantity: string (nullable = true)
+ |-- ss_wholesale_cost: string (nullable = true)
+ |-- ss_list_price: string (nullable = true)
+ |-- ss_sales_price: string (nullable = true)
+ |-- ss_ext_discount_amt: string (nullable = true)
+ |-- ss_ext_sales_price: string (nullable = true)
+ |-- ss_ext_wholesale_cost: string (nullable = true)
+ |-- ss_ext_list_price: string (nullable = true)
+ |-- ss_ext_tax: string (nullable = true)
+ |-- ss_coupon_amt: string (nullable = true)
+ |-- ss_net_paid: string (nullable = true)
+ |-- ss_net_paid_inc_tax: string (nullable = true)
+ |-- ss_net_profit: string (nullable = true)
+
+
+============================================================
+CELLULE 7
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, trim, when
+from pyspark.sql.types import IntegerType, LongType, DecimalType
+
+# Remplacer les chaînes vides par NULL
+sales_clean = sales_df.select([
+    when(trim(col(c)) == "", None)
+    .otherwise(trim(col(c)))
+    .alias(c)
+    for c in sales_df.columns
+])
+
+# Colonnes entières
+int_cols = [
+    "ss_sold_date_sk",
+    "ss_sold_time_sk",
+    "ss_item_sk",
+    "ss_customer_sk",
+    "ss_cdemo_sk",
+    "ss_hdemo_sk",
+    "ss_addr_sk",
+    "ss_store_sk",
+    "ss_promo_sk",
+    "ss_quantity"
+]
+
+# Colonnes monétaires
+decimal_cols = [
+    "ss_wholesale_cost",
+    "ss_list_price",
+    "ss_sales_price",
+    "ss_ext_discount_amt",
+    "ss_ext_sales_price",
+    "ss_ext_wholesale_cost",
+    "ss_ext_list_price",
+    "ss_ext_tax",
+    "ss_coupon_amt",
+    "ss_net_paid",
+    "ss_net_paid_inc_tax",
+    "ss_net_profit"
+]
+
+for c in int_cols:
+    sales_clean = sales_clean.withColumn(
+        c, col(c).try_cast("int")
+    )
+
+sales_clean = sales_clean.withColumn(
+    "ss_ticket_number",
+    col("ss_ticket_number").try_cast("bigint")
+)
+
+for c in decimal_cols:
+    sales_clean = sales_clean.withColumn(
+        c, col(c).try_cast("decimal(18,2)")
+    )
+
+# Conserver les ventes valides
+sales_silver = sales_clean.filter(
+    col("ss_item_sk").isNotNull()
+    & col("ss_quantity").isNotNull()
+    & (col("ss_quantity") > 0)
+)
+
+print("Transformation Silver préparée.")
+
+RESULTATS :
+Transformation Silver préparée.
+
+============================================================
+CELLULE 8
+============================================================
+
+CODE :
+sales_silver.select(
+    "ss_item_sk",
+    "ss_customer_sk",
+    "ss_quantity",
+    "ss_sales_price",
+    "ss_net_paid"
+).show(5)
+
+sales_silver.printSchema()
+
+RESULTATS :
++----------+--------------+-----------+--------------+-----------+
+|ss_item_sk|ss_customer_sk|ss_quantity|ss_sales_price|ss_net_paid|
++----------+--------------+-----------+--------------+-----------+
+|     10001|         44404|         31|         23.08|     715.48|
+|     10000|         44404|         54|         83.34|    4500.36|
+|     15556|         44404|         39|         83.24|    2629.55|
+|      4597|         89832|         20|        133.40|    2668.00|
+|      3258|         89832|         76|         11.85|     900.60|
++----------+--------------+-----------+--------------+-----------+
+only showing top 5 rows
+root
+ |-- ss_sold_date_sk: integer (nullable = true)
+ |-- ss_sold_time_sk: integer (nullable = true)
+ |-- ss_item_sk: integer (nullable = true)
+ |-- ss_customer_sk: integer (nullable = true)
+ |-- ss_cdemo_sk: integer (nullable = true)
+ |-- ss_hdemo_sk: integer (nullable = true)
+ |-- ss_addr_sk: integer (nullable = true)
+ |-- ss_store_sk: integer (nullable = true)
+ |-- ss_promo_sk: integer (nullable = true)
+ |-- ss_ticket_number: long (nullable = true)
+ |-- ss_quantity: integer (nullable = true)
+ |-- ss_wholesale_cost: decimal(18,2) (nullable = true)
+ |-- ss_list_price: decimal(18,2) (nullable = true)
+ |-- ss_sales_price: decimal(18,2) (nullable = true)
+ |-- ss_ext_discount_amt: decimal(18,2) (nullable = true)
+ |-- ss_ext_sales_price: decimal(18,2) (nullable = true)
+ |-- ss_ext_wholesale_cost: decimal(18,2) (nullable = true)
+ |-- ss_ext_list_price: decimal(18,2) (nullable = true)
+ |-- ss_ext_tax: decimal(18,2) (nullable = true)
+ |-- ss_coupon_amt: decimal(18,2) (nullable = true)
+ |-- ss_net_paid: decimal(18,2) (nullable = true)
+ |-- ss_net_paid_inc_tax: decimal(18,2) (nullable = true)
+ |-- ss_net_profit: decimal(18,2) (nullable = true)
+
+                                                                                
+============================================================
+CELLULE 9
+============================================================
+
+CODE :
+silver_sales_path = "hdfs://localhost:9000/retail-lake/silver/store_sales"
+
+(
+    sales_silver
+    .coalesce(2)
+    .write
+    .mode("overwrite")
+    .parquet(silver_sales_path)
+)
+
+print("Table store_sales Silver enregistrée dans HDFS !")
+
+RESULTATS :
+                                                                                Table store_sales Silver enregistrée dans HDFS !
+
+============================================================
+CELLULE 10
+============================================================
+
+CODE :
+sales_silver_check = spark.read.parquet(silver_sales_path)
+
+sales_silver_check.select(
+    "ss_item_sk",
+    "ss_quantity",
+    "ss_net_paid"
+).show(5)
+
+print("Nombre de ventes Silver :", sales_silver_check.count())
+
+RESULTATS :
+                                                                                +----------+-----------+-----------+
+|ss_item_sk|ss_quantity|ss_net_paid|
++----------+-----------+-----------+
+|     10001|         31|     715.48|
+|     10000|         54|    4500.36|
+|     15556|         39|    2629.55|
+|      4597|         20|    2668.00|
+|      3258|         76|     900.60|
++----------+-----------+-----------+
+only showing top 5 rows
+[Stage 7:>                                                          (0 + 1) / 1]Nombre de ventes Silver : 667579
+                                                                                
+============================================================
+CELLULE 12
+============================================================
+
+CODE :
+from pyspark.sql.functions import split, col
+
+item_path = (
+    "hdfs://localhost:9000/"
+    "retail-lake/raw/tpcxbb/initial/item/item.dat"
+)
+
+item_raw = spark.read.text(item_path)
+
+item_columns = [
+    "i_item_sk", "i_item_id", "i_rec_start_date",
+    "i_rec_end_date", "i_item_desc", "i_current_price",
+    "i_wholesale_cost", "i_brand_id", "i_brand",
+    "i_class_id", "i_class", "i_category_id",
+    "i_category", "i_manufact_id", "i_manufact",
+    "i_size", "i_formulation", "i_color",
+    "i_units", "i_container", "i_manager_id",
+    "i_product_name"
+]
+
+item_df = item_raw.select(
+    *[
+        split(col("value"), r"\|").getItem(i).alias(nom)
+        for i, nom in enumerate(item_columns)
+    ]
+)
+
+item_df.select(
+    "i_item_sk",
+    "i_item_id",
+    "i_category",
+    "i_brand",
+    "i_current_price"
+).show(5, truncate=False)
+
+RESULTATS :
++---------+----------------+-----------------+---------------------------------+---------------+
+|i_item_sk|i_item_id       |i_category       |i_brand                          |i_current_price|
++---------+----------------+-----------------+---------------------------------+---------------+
+|0        |AAAAAAAAAAAAAAAA|Sports & Outdoors|71TS7NSbvH1YbdiQMG6ttBHKAljiNoIRB|72.29          |
+|1        |AAAAAAAAAAAAAAAB|Books            |qNBimHGBu763udH                  |95.67          |
+|2        |AAAAAAAAAAAAAAAC|Books            |ma5                              |62.74          |
+|3        |AAAAAAAAAAAAAAAD|Books            |op9d25ZWK4zQ7JNAc                |98.67          |
+|4        |AAAAAAAAAAAAAAAE|Books            |RYLn4HY3I3kooPCNhwV              |40.95          |
++---------+----------------+-----------------+---------------------------------+---------------+
+only showing top 5 rows
+
+============================================================
+CELLULE 13
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, trim, when, to_date
+
+# Nettoyage des champs vides
+item_clean = item_df.select([
+    when(trim(col(c)) == "", None)
+    .otherwise(trim(col(c)))
+    .alias(c)
+    for c in item_df.columns
+])
+
+# Conversion des identifiants
+item_int_cols = [
+    "i_item_sk",
+    "i_brand_id",
+    "i_class_id",
+    "i_category_id",
+    "i_manufact_id",
+    "i_manager_id"
+]
+
+for c in item_int_cols:
+    item_clean = item_clean.withColumn(
+        c, col(c).try_cast("int")
+    )
+
+# Conversion des prix
+for c in ["i_current_price", "i_wholesale_cost"]:
+    item_clean = item_clean.withColumn(
+        c, col(c).try_cast("decimal(18,2)")
+    )
+
+# Conversion des dates
+for c in ["i_rec_start_date", "i_rec_end_date"]:
+    item_clean = item_clean.withColumn(
+        c, to_date(col(c), "yyyy-MM-dd")
+    )
+
+# Filtrage des identifiants invalides
+item_silver = item_clean.filter(
+    col("i_item_sk").isNotNull()
+)
+
+print("Transformation Silver item préparée !")
+
+RESULTATS :
+Transformation Silver item préparée !
+
+============================================================
+CELLULE 14
+============================================================
+
+CODE :
+item_silver.select(
+    "i_item_sk",
+    "i_category",
+    "i_brand",
+    "i_current_price",
+    "i_rec_start_date"
+).show(5, truncate=False)
+
+item_silver.printSchema()
+
+RESULTATS :
++---------+-----------------+---------------------------------+---------------+----------------+
+|i_item_sk|i_category       |i_brand                          |i_current_price|i_rec_start_date|
++---------+-----------------+---------------------------------+---------------+----------------+
+|0        |Sports & Outdoors|71TS7NSbvH1YbdiQMG6ttBHKAljiNoIRB|72.29          |2000-01-14      |
+|1        |Books            |qNBimHGBu763udH                  |95.67          |2000-09-23      |
+|2        |Books            |ma5                              |62.74          |2000-09-01      |
+|3        |Books            |op9d25ZWK4zQ7JNAc                |98.67          |2000-12-12      |
+|4        |Books            |RYLn4HY3I3kooPCNhwV              |40.95          |2000-04-04      |
++---------+-----------------+---------------------------------+---------------+----------------+
+only showing top 5 rows
+root
+ |-- i_item_sk: integer (nullable = true)
+ |-- i_item_id: string (nullable = true)
+ |-- i_rec_start_date: date (nullable = true)
+ |-- i_rec_end_date: date (nullable = true)
+ |-- i_item_desc: string (nullable = true)
+ |-- i_current_price: decimal(18,2) (nullable = true)
+ |-- i_wholesale_cost: decimal(18,2) (nullable = true)
+ |-- i_brand_id: integer (nullable = true)
+ |-- i_brand: string (nullable = true)
+ |-- i_class_id: integer (nullable = true)
+ |-- i_class: string (nullable = true)
+ |-- i_category_id: integer (nullable = true)
+ |-- i_category: string (nullable = true)
+ |-- i_manufact_id: integer (nullable = true)
+ |-- i_manufact: string (nullable = true)
+ |-- i_size: string (nullable = true)
+ |-- i_formulation: string (nullable = true)
+ |-- i_color: string (nullable = true)
+ |-- i_units: string (nullable = true)
+ |-- i_container: string (nullable = true)
+ |-- i_manager_id: integer (nullable = true)
+ |-- i_product_name: string (nullable = true)
+
+
+============================================================
+CELLULE 15
+============================================================
+
+CODE :
+silver_item_path = "hdfs://localhost:9000/retail-lake/silver/item"
+
+(
+    item_silver
+    .coalesce(1)
+    .write
+    .mode("overwrite")
+    .parquet(silver_item_path)
+)
+
+print("Table Silver item enregistrée avec succès !")
+
+RESULTATS :
+[Stage 12:>                                                         (0 + 1) / 1]Table Silver item enregistrée avec succès !
+                                                                                
+============================================================
+CELLULE 16
+============================================================
+
+CODE :
+item_silver_check = spark.read.parquet(silver_item_path)
+
+print("Nombre d'articles Silver :", item_silver_check.count())
+
+item_silver_check.select(
+    "i_item_sk",
+    "i_category",
+    "i_current_price"
+).show(5, truncate=False)
+
+RESULTATS :
+Nombre d'articles Silver : 17820
++---------+-----------------+---------------+
+|i_item_sk|i_category       |i_current_price|
++---------+-----------------+---------------+
+|0        |Sports & Outdoors|72.29          |
+|1        |Books            |95.67          |
+|2        |Books            |62.74          |
+|3        |Books            |98.67          |
+|4        |Books            |40.95          |
++---------+-----------------+---------------+
+only showing top 5 rows
+
+============================================================
+CELLULE 17
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, count, when, trim, sum as spark_sum
+
+# Contrôle des valeurs manquantes sur les colonnes essentielles
+colonnes_essentielles = [
+    "i_item_sk",
+    "i_category",
+    "i_current_price"
+]
+
+controle_item = item_silver_check.select([
+    spark_sum(
+        when(col(c).isNull(), 1).otherwise(0)
+    ).alias(c + "_nulls")
+    for c in colonnes_essentielles
+])
+
+controle_item.show()
+
+RESULTATS :
+[Stage 18:>                                                         (0 + 1) / 1]+---------------+----------------+---------------------+
+|i_item_sk_nulls|i_category_nulls|i_current_price_nulls|
++---------------+----------------+---------------------+
+|              0|               0|                    0|
++---------------+----------------+---------------------+
+
+                                                                                
+============================================================
+CELLULE 18
+============================================================
+
+CODE :
+from pyspark.sql.functions import count, col
+
+doublons_item = (
+    item_silver_check
+    .groupBy("i_item_sk")
+    .agg(count("*").alias("nb_occurrences"))
+    .filter(col("nb_occurrences") > 1)
+)
+
+doublons_item.show(10, truncate=False)
+
+print(
+    "Nombre d'identifiants dupliqués :",
+    doublons_item.count()
+)
+
+RESULTATS :
+                                                                                +---------+--------------+
+|i_item_sk|nb_occurrences|
++---------+--------------+
++---------+--------------+
+
+Nombre d'identifiants dupliqués : 0
+
+============================================================
+CELLULE 19
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, sum as spark_sum, when
+
+controle_validite_item = item_silver_check.agg(
+    spark_sum(
+        when(col("i_current_price") < 0, 1).otherwise(0)
+    ).alias("prix_negatifs"),
+
+    spark_sum(
+        when(
+            col("i_rec_end_date").isNotNull()
+            & (col("i_rec_end_date") < col("i_rec_start_date")),
+            1
+        ).otherwise(0)
+    ).alias("dates_incoherentes"),
+
+    spark_sum(
+        when(col("i_rec_start_date").isNull(), 1).otherwise(0)
+    ).alias("dates_debut_manquantes")
+)
+
+controle_validite_item.show()
+
+RESULTATS :
+[Stage 30:>                                                         (0 + 1) / 1]+-------------+------------------+----------------------+
+|prix_negatifs|dates_incoherentes|dates_debut_manquantes|
++-------------+------------------+----------------------+
+|            0|                 0|                     0|
++-------------+------------------+----------------------+
+
+                                                                                
+============================================================
+CELLULE 20
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, when, sum as spark_sum
+
+# Lecture de la table Silver des ventes
+sales_silver_check = spark.read.parquet(
+    "hdfs://localhost:9000/retail-lake/silver/store_sales"
+)
+
+# Contrôle des colonnes essentielles
+controle_ventes = sales_silver_check.agg(
+    spark_sum(
+        when(col("ss_item_sk").isNull(), 1).otherwise(0)
+    ).alias("articles_manquants"),
+
+    spark_sum(
+        when(col("ss_quantity").isNull(), 1).otherwise(0)
+    ).alias("quantites_manquantes"),
+
+    spark_sum(
+        when(col("ss_net_paid").isNull(), 1).otherwise(0)
+    ).alias("montants_manquants"),
+
+    spark_sum(
+        when(col("ss_ticket_number").isNull(), 1).otherwise(0)
+    ).alias("tickets_manquants")
+)
+
+controle_ventes.show()
+
+RESULTATS :
+[Stage 34:>                                                         (0 + 1) / 1]+------------------+--------------------+------------------+-----------------+
+|articles_manquants|quantites_manquantes|montants_manquants|tickets_manquants|
++------------------+--------------------+------------------+-----------------+
+|                 0|                   0|                 0|                0|
++------------------+--------------------+------------------+-----------------+
+
+                                                                                
+============================================================
+CELLULE 21
+============================================================
+
+CODE :
+from pyspark.sql.functions import col, when, sum as spark_sum
+
+controle_validite_ventes = sales_silver_check.agg(
+    spark_sum(
+        when(col("ss_quantity") <= 0, 1).otherwise(0)
+    ).alias("quantites_invalides"),
+
+    spark_sum(
+        when(col("ss_net_paid") < 0, 1).otherwise(0)
+    ).alias("montants_negatifs"),
+
+    spark_sum(
+        when(col("ss_net_paid") == 0, 1).otherwise(0)
+    ).alias("montants_nuls"),
+
+    spark_sum(
+        when(col("ss_sales_price") < 0, 1).otherwise(0)
+    ).alias("prix_vente_negatifs")
+)
+
+controle_validite_ventes.show()
+
+RESULTATS :
+[Stage 37:>                                                         (0 + 1) / 1]+-------------------+-----------------+-------------+-------------------+
+|quantites_invalides|montants_negatifs|montants_nuls|prix_vente_negatifs|
++-------------------+-----------------+-------------+-------------------+
+|                  0|                0|         3954|                  0|
++-------------------+-----------------+-------------+-------------------+
+
+                                                                                
+============================================================
+CELLULE 22
+============================================================
+
+CODE :
+ventes_montant_nul = sales_silver_check.filter(
+    col("ss_net_paid") == 0
+)
+
+ventes_montant_nul.select(
+    "ss_item_sk",
+    "ss_ticket_number",
+    "ss_quantity",
+    "ss_sales_price",
+    "ss_ext_sales_price",
+    "ss_ext_discount_amt",
+    "ss_coupon_amt",
+    "ss_net_paid"
+).show(10, truncate=False)
+
+
+RESULTATS :
+[Stage 40:>                                                         (0 + 1) / 1]+----------+----------------+-----------+--------------+------------------+-------------------+-------------+-----------+
+|ss_item_sk|ss_ticket_number|ss_quantity|ss_sales_price|ss_ext_sales_price|ss_ext_discount_amt|ss_coupon_amt|ss_net_paid|
++----------+----------------+-----------+--------------+------------------+-------------------+-------------+-----------+
+|10595     |8               |34         |0.00          |0.00              |220.66             |0.00         |0.00       |
+|16330     |15              |99         |0.00          |0.00              |2987.82            |0.00         |0.00       |
+|16065     |32              |10         |0.00          |0.00              |1436.40            |0.00         |0.00       |
+|7612      |163             |95         |0.00          |0.00              |7783.35            |0.00         |0.00       |
+|17470     |181             |3          |0.00          |0.00              |227.13             |0.00         |0.00       |
+|577       |230             |11         |0.00          |0.00              |864.82             |0.00         |0.00       |
+|2193      |266             |17         |0.00          |0.00              |1029.69            |0.00         |0.00       |
+|6511      |280             |95         |33.69         |3200.55           |902.50             |3200.55      |0.00       |
+|9678      |298             |49         |0.00          |0.00              |3197.25            |0.00         |0.00       |
+|3845      |411             |57         |0.00          |0.00              |2201.34            |0.00         |0.00       |
++----------+----------------+-----------+--------------+------------------+-------------------+-------------+-----------+
+only showing top 10 rows
+                                                                                
+============================================================
+CELLULE 23
+============================================================
+
+CODE :
+from pyspark.sql.functions import broadcast
+
+# Articles présents dans les ventes
+ventes_articles_ids = sales_silver_check.select(
+    "ss_item_sk"
+)
+
+# Identifiants des articles de référence
+articles_ids = item_silver_check.select(
+    "i_item_sk"
+)
+
+# Rechercher les ventes sans article correspondant
+ventes_sans_article = ventes_articles_ids.join(
+    broadcast(articles_ids),
+    ventes_articles_ids.ss_item_sk == articles_ids.i_item_sk,
+    "left_anti"
+)
+
+print(
+    "Nombre de lignes de vente sans article correspondant :",
+    ventes_sans_article.count()
+)
+
+RESULTATS :
+                                                                                Nombre de lignes de vente sans article correspondant : 0
+
+============================================================
+CELLULE 25
+============================================================
+
+CODE :
+from pyspark.sql.functions import (
+    col, broadcast, sum as spark_sum,
+    count, coalesce, lit
+)
+
+# Jointure entre ventes et articles
+ventes_articles = sales_silver_check.join(
+    broadcast(
+        item_silver_check.select("i_item_sk", "i_category")
+    ),
+    sales_silver_check.ss_item_sk == col("i_item_sk"),
+    "left"
+)
+
+# Agrégation métier
+gold_ca_categorie = (
+    ventes_articles
+    .withColumn(
+        "categorie",
+        coalesce(col("i_category"), lit("Non renseignée"))
+    )
+    .groupBy("categorie")
+    .agg(
+        spark_sum("ss_net_paid").alias("chiffre_affaires_net"),
+        spark_sum("ss_quantity").alias("quantite_vendue"),
+        count("*").alias("nombre_lignes_vente")
+    )
+    .orderBy(col("chiffre_affaires_net").desc())
+)
+
+gold_ca_categorie.show(20, truncate=False)
+
+RESULTATS :
+[Stage 46:>                                                         (0 + 1) / 1]+------------------------+--------------------+---------------+-------------------+
+|categorie               |chiffre_affaires_net|quantite_vendue|nombre_lignes_vente|
++------------------------+--------------------+---------------+-------------------+
+|Music                   |519666693.84        |15238374       |301236             |
+|Books                   |307151503.25        |9007511        |177671             |
+|Movies & TV             |74735891.89         |2189279        |43376              |
+|Clothing & Accessories  |56754855.82         |1640550        |32372              |
+|Electronics             |55715087.49         |1632098        |32619              |
+|Home & Kitchen          |41260511.11         |1226839        |24380              |
+|Sports & Outdoors       |40926938.33         |1209305        |23911              |
+|Toys & Games            |27437825.33         |809999         |16121              |
+|Tools & Home Improvement|26880279.31         |801519         |15893              |
++------------------------+--------------------+---------------+-------------------+
+
+                                                                                
+============================================================
+CELLULE 27
+============================================================
+
+CODE :
+gold_path = "hdfs://localhost:9000/retail-lake/gold/ca_par_categorie"
+
+gold_ca_categorie.coalesce(1).write.mode("overwrite").parquet(gold_path)
+
+gold_verification = spark.read.parquet(gold_path)
+
+gold_verification.show(20, truncate=False)
+
+print("Nombre de catégories :", gold_verification.count())
+
+print(
+    "Nombre total de lignes de vente agrégées :",
+    gold_verification.agg(
+        spark_sum("nombre_lignes_vente")
+    ).first()[0]
+)
+
+RESULTATS :
+                                                                                +------------------------+--------------------+---------------+-------------------+
+|categorie               |chiffre_affaires_net|quantite_vendue|nombre_lignes_vente|
++------------------------+--------------------+---------------+-------------------+
+|Music                   |519666693.84        |15238374       |301236             |
+|Books                   |307151503.25        |9007511        |177671             |
+|Movies & TV             |74735891.89         |2189279        |43376              |
+|Clothing & Accessories  |56754855.82         |1640550        |32372              |
+|Electronics             |55715087.49         |1632098        |32619              |
+|Home & Kitchen          |41260511.11         |1226839        |24380              |
+|Sports & Outdoors       |40926938.33         |1209305        |23911              |
+|Toys & Games            |27437825.33         |809999         |16121              |
+|Tools & Home Improvement|26880279.31         |801519         |15893              |
++------------------------+--------------------+---------------+-------------------+
+
+Nombre de catégories : 9
+Nombre total de lignes de vente agrégées : 667579
+
+============================================================
+CELLULE 28
+============================================================
+
+CODE :
+base = "hdfs://localhost:9000/retail-lake/format_comparison"
+
+gold_verification.write.mode("overwrite").option(
+    "header", True
+).csv(base + "/csv")
+
+gold_verification.write.mode("overwrite").json(
+    base + "/json"
+)
+
+gold_verification.write.mode("overwrite").parquet(
+    base + "/parquet"
+)
+
+print("CSV :", spark.read.option("header", True).csv(base + "/csv").count())
+print("JSON :", spark.read.json(base + "/json").count())
+print("Parquet :", spark.read.parquet(base + "/parquet").count())
+
+RESULTATS :
+                                                                                CSV : 9
+JSON : 9
+Parquet : 9
+
+============================================================
+CELLULE 29
+============================================================
+
+CODE :
+import pyspark
+
+print("PySpark :", pyspark.__version__)
+print("Spark :", spark.version)
+print("Mode :", spark.sparkContext.master)
+
+RESULTATS :
+PySpark : 4.3.0
+Spark : 4.3.0
+Mode : local[1]
