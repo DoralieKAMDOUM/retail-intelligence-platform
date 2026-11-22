@@ -1,0 +1,6 @@
+Role,Bronze,Silver,Gold
+Administrateur,Administration,Administration,Administration
+Ingestion,Ecriture,Aucun,Aucun
+Data Engineer,Lecture,Lecture et ecriture,Lecture et ecriture
+Data Analyst,Aucun,Lecture,Lecture
+Utilisateur BI,Aucun,Aucun,Lecture

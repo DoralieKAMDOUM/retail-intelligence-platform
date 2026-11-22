@@ -1,0 +1,28 @@
+=== Permissions HDFS ===
+drwxr-xr-x   - doralie supergroup          0 2026-11-17 16:35 /retail-lake/bronze
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:41 /retail-lake/silver
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:59 /retail-lake/gold
+=== ACL : bronze ===
+# file: /retail-lake/bronze
+# owner: doralie
+# group: supergroup
+user::rwx
+group::r-x
+other::r-x
+
+=== ACL : silver ===
+# file: /retail-lake/silver
+# owner: doralie
+# group: supergroup
+user::rwx
+group::r-x
+other::r-x
+
+=== ACL : gold ===
+# file: /retail-lake/gold
+# owner: doralie
+# group: supergroup
+user::rwx
+group::r-x
+other::r-x
+

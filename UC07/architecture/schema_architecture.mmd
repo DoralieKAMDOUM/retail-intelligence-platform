@@ -1,0 +1,23 @@
+flowchart TD
+    A["Sources TPC-DS<br/>customer.dat / item.dat / store_sales.dat"]
+    B["HDFS Raw<br/>Fichiers sources presents"]
+    C["HDFS Bronze<br/>Repertoire vide - cible"]
+    D["Apache Spark / PySpark 4.3.0"]
+    E["HDFS Silver<br/>store_sales + item - Parquet"]
+    F["HDFS Gold<br/>ca_par_categorie - Parquet"]
+    G["Jupyter UC08<br/>KPI et visualisations"]
+
+    A --> B
+    B --> D
+    D --> E
+    E --> F
+    F --> G
+
+    B -. "Alimentation proposee" .-> C
+    C -. "Transformation cible" .-> D
+
+    classDef existing fill:#e7f0ff,stroke:#2563eb,color:#111827
+    classDef proposed fill:#fff3df,stroke:#d97706,color:#111827
+
+    class A,B,D,E,F,G existing
+    class C proposed

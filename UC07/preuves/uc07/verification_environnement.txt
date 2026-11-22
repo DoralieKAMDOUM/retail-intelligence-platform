@@ -1,0 +1,18 @@
+=== HDFS : Retail Lake ===
+Found 7 items
+drwxr-xr-x   - doralie supergroup          0 2026-11-17 16:35 /retail-lake/bronze
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 12:00 /retail-lake/format_comparison
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:59 /retail-lake/gold
+drwxr-xr-x   - doralie supergroup          0 2026-11-17 16:36 /retail-lake/logs
+drwxr-xr-x   - doralie supergroup          0 2026-11-18 12:10 /retail-lake/quality
+drwxr-xr-x   - doralie supergroup          0 2026-11-18 11:10 /retail-lake/raw
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:41 /retail-lake/silver
+=== HDFS : Silver ===
+Found 2 items
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:41 /retail-lake/silver/item
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:34 /retail-lake/silver/store_sales
+=== HDFS : Gold ===
+Found 1 items
+drwxr-xr-x   - doralie supergroup          0 2026-11-19 11:59 /retail-lake/gold/ca_par_categorie
+=== Version PySpark ===
+4.3.0

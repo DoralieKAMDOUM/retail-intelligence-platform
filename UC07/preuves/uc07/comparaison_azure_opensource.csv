@@ -1,0 +1,9 @@
+Responsabilite,Service_Azure,Alternative_Open_Source,Statut_local,Statut_Azure
+Stockage_Data_Lake,ADLS_Gen2,HDFS,Deployed,Proposed
+Stockage_objet,Azure_Blob_Storage,MinIO,Not_deployed,Studied
+Ingestion,Azure_Data_Factory,Apache_NiFi,To_verify,Proposed
+Traitement_distribue,Synapse_Spark_Pools,Apache_Spark,Deployed,Proposed
+Requetes_SQL,Synapse_SQL,Trino,Not_deployed,Studied
+Format_table_Lakehouse,Delta_Lake,Apache_Iceberg,Not_deployed,Studied
+Orchestration,Azure_Data_Factory,NiFi_or_local_scripts,Partially_verified,Proposed
+Analyse_et_visualisation,Synapse_Studio,Jupyter,Deployed,Proposed
